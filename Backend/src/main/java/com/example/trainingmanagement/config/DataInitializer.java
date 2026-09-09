@@ -3,13 +3,19 @@ package com.example.trainingmanagement.config;
 import com.example.trainingmanagement.entity.Department;
 import com.example.trainingmanagement.entity.Officer;
 import com.example.trainingmanagement.entity.Training;
+import com.example.trainingmanagement.entity.NominationStatus;
+import com.example.trainingmanagement.dto.NominationRequest;
 import com.example.trainingmanagement.repository.DepartmentRepository;
+import com.example.trainingmanagement.repository.NominationRepository;
 import com.example.trainingmanagement.repository.OfficerRepository;
 import com.example.trainingmanagement.repository.TrainingRepository;
+import com.example.trainingmanagement.service.NominationService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.List;
 
 @Component
 public class DataInitializer implements CommandLineRunner {
@@ -17,17 +23,27 @@ public class DataInitializer implements CommandLineRunner {
     private final DepartmentRepository departmentRepository;
     private final OfficerRepository officerRepository;
     private final TrainingRepository trainingRepository;
+    private final NominationRepository nominationRepository;
+    private final NominationService nominationService;
 
     public DataInitializer(DepartmentRepository departmentRepository,
                            OfficerRepository officerRepository,
-                           TrainingRepository trainingRepository) {
+                           TrainingRepository trainingRepository,
+                           NominationRepository nominationRepository,
+                           NominationService nominationService) {
         this.departmentRepository = departmentRepository;
         this.officerRepository = officerRepository;
         this.trainingRepository = trainingRepository;
+        this.nominationRepository = nominationRepository;
+        this.nominationService = nominationService;
     }
 
     @Override
     public void run(String... args) {
+
+        // Records created before Task 2 had no status. They were valid active
+        // nominations, so retain them as confirmed participants.
+        nominationRepository.updateMissingStatus(NominationStatus.CONFIRMED);
 
         if (departmentRepository.count() == 0) {
             Department finance = new Department(null, "Finance Division");
@@ -47,12 +63,14 @@ public class DataInitializer implements CommandLineRunner {
         Department hr = departmentRepository.findByName("Human Resources Division").orElseThrow();
         Department it = departmentRepository.findByName("IT Division").orElseThrow();
 
-        if (officerRepository.count() == 0) {
-            officerRepository.save(new Officer(null, "EMP001", "A. Perera", "aperera@example.com", finance));
-            officerRepository.save(new Officer(null, "EMP002", "K. Silva", "ksilva@example.com", admin));
-            officerRepository.save(new Officer(null, "EMP003", "N. Fernando", "nfernando@example.com", it));
-            officerRepository.save(new Officer(null, "EMP004", "S. Perera", "sperera@example.com", hr));
-        }
+        saveOfficerIfMissing("EMP001", "A. Perera", "aperera@example.com", finance);
+        saveOfficerIfMissing("EMP002", "K. Silva", "ksilva@example.com", admin);
+        saveOfficerIfMissing("EMP003", "N. Fernando", "nfernando@example.com", it);
+        saveOfficerIfMissing("EMP004", "S. Perera", "sperera@example.com", hr);
+        saveOfficerIfMissing("EMP005", "R. Kumar", "rkumar@example.com", finance);
+        saveOfficerIfMissing("EMP006", "D. Fernando", "dfernando@example.com", admin);
+        saveOfficerIfMissing("EMP007", "M. Silva", "msilva@example.com", it);
+        saveOfficerIfMissing("EMP008", "P. Gomes", "pgomes@example.com", hr);
 
         if (trainingRepository.count() == 0) {
             trainingRepository.save(new Training(null, "Leadership Development Programme",
@@ -61,6 +79,42 @@ public class DataInitializer implements CommandLineRunner {
                     LocalDate.of(2026, 10, 5), "Conference Room A", "Mary Gomes", 30));
             trainingRepository.save(new Training(null, "Communication Skills Training",
                     LocalDate.of(2026, 10, 12), "Conference Room B", "Peter Jay", 25));
+        }
+
+        Training cybersecurity = trainingRepository.findByTitle("Cybersecurity Awareness Programme")
+                .orElseGet(() -> trainingRepository.save(new Training(null,
+                        "Cybersecurity Awareness Programme",
+                        LocalDate.of(2026, 10, 20), "Computer Lab", "Security Team", 5)));
+        cybersecurity.setMaximumParticipants(5);
+        trainingRepository.save(cybersecurity);
+        trainingRepository.findAll().forEach(training -> {
+            training.setMaximumParticipants(5);
+            trainingRepository.save(training);
+        });
+
+        seedCybersecurityNominations(cybersecurity);
+    }
+
+    private void saveOfficerIfMissing(String employeeId, String name, String email, Department department) {
+        if (officerRepository.findByEmployeeId(employeeId).isEmpty()) {
+            officerRepository.save(new Officer(null, employeeId, name, email, department));
+        }
+    }
+
+    private void seedCybersecurityNominations(Training training) {
+        List<String> employeeIds = Arrays.asList(
+                "EMP001", "EMP002", "EMP003", "EMP004",
+                "EMP005", "EMP006", "EMP007", "EMP008");
+
+        for (String employeeId : employeeIds) {
+            Officer officer = officerRepository.findByEmployeeId(employeeId).orElseThrow();
+            boolean alreadyActive = nominationRepository.existsByOfficerIdAndTrainingIdAndStatusIn(
+                    officer.getId(), training.getId(),
+                    Arrays.asList(NominationStatus.CONFIRMED, NominationStatus.WAITING));
+            if (!alreadyActive) {
+                nominationService.createNomination(new NominationRequest(
+                        officer.getId(), training.getId(), officer.getDepartment().getId()));
+            }
         }
     }
 }

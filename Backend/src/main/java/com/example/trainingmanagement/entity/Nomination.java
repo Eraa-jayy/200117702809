@@ -2,6 +2,8 @@ package com.example.trainingmanagement.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -16,7 +18,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(
@@ -52,13 +54,17 @@ public class Nomination {
     private Department department;
 
     @Column(name = "nomination_date")
-    private LocalDate nominationDate;
+    private LocalDateTime nominationDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
+    private NominationStatus status;
 
     // Set nomination date automatically to today before saving a new nomination
     @PrePersist
     public void setNominationDateOnCreate() {
         if (nominationDate == null) {
-            nominationDate = LocalDate.now();
+            nominationDate = LocalDateTime.now();
         }
     }
 }

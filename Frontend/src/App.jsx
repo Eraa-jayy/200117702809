@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "./services/api";
 import "./App.css";
 
@@ -42,6 +42,31 @@ function App() {
   });
   const [message, setMessage] = useState({ type: "", text: "" });
   const [loading, setLoading] = useState(true);
+  const trainingSummaries = useMemo(
+    () => trainings.map((training) => {
+      const trainingNominations = nominations.filter(
+        (nomination) => nomination.training?.id === training.id
+      );
+      return {
+        ...training,
+        confirmed: trainingNominations.filter((nomination) => nomination.status === "CONFIRMED").length,
+        waiting: trainingNominations.filter((nomination) => nomination.status === "WAITING").length,
+      };
+    }),
+    [trainings, nominations]
+  );
+  const sortedNominations = useMemo(
+    () => [...nominations].sort((first, second) => {
+      const trainingOrder = (first.training?.title || "").localeCompare(
+        second.training?.title || ""
+      );
+      if (trainingOrder !== 0) {
+        return trainingOrder;
+      }
+      return (first.nominationDate || "").localeCompare(second.nominationDate || "");
+    }),
+    [nominations]
+  );
 
   const loadNominations = async () => {
     const response = await api.get("/nominations");
@@ -87,28 +112,38 @@ function App() {
     }
 
     try {
-      await api.post("/nominations", {
+      const response = await api.post("/nominations", {
         officerId: Number(form.officerId),
         trainingId: Number(form.trainingId),
         departmentId: Number(form.departmentId),
       });
       await loadNominations();
       setForm({ departmentId: "", officerId: "", trainingId: "" });
-      setMessage({ type: "success", text: "Officer nominated successfully." });
+      setMessage({
+        type: "success",
+        text: response.data?.status === "WAITING"
+          ? "Training is full. Officer has been added to the waiting list."
+          : "Officer nominated successfully and confirmed.",
+      });
     } catch (error) {
       setMessage({ type: "error", text: getErrorMessage(error) });
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this nomination?")) {
+  const handleCancel = async (id) => {
+    if (!window.confirm("Are you sure you want to cancel this nomination?")) {
       return;
     }
 
     try {
-      await api.delete(`/nominations/${id}`);
+      const response = await api.patch(`/nominations/${id}/cancel`);
       await loadNominations();
-      setMessage({ type: "success", text: "Nomination deleted successfully." });
+      setMessage({
+        type: "success",
+        text: response.data?.promoted
+          ? "Nomination cancelled. The next waiting participant has been promoted."
+          : "Nomination cancelled successfully.",
+      });
     } catch (error) {
       setMessage({ type: "error", text: getErrorMessage(error) });
     }
@@ -166,6 +201,38 @@ function App() {
       </section>
 
       <section className="card">
+        <h3>Training Programmes</h3>
+        <div className="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Training</th>
+                <th>Capacity</th>
+                <th>Confirmed</th>
+                <th>Waiting</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trainingSummaries.length === 0 ? (
+                <tr>
+                  <td colSpan="4">No training programmes found.</td>
+                </tr>
+              ) : (
+                trainingSummaries.map((training) => (
+                  <tr key={training.id}>
+                    <td>{training.title}</td>
+                    <td>{training.maximumParticipants}</td>
+                    <td>{training.confirmed}</td>
+                    <td>{training.waiting}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="card">
         <h3>Current Nominations</h3>
         {loading ? (
           <p>Loading nominations...</p>
@@ -174,12 +241,12 @@ function App() {
             <table>
               <thead>
                 <tr>
-                  <th>ID</th>
+                  <th>Training Programme</th>
                   <th>Officer</th>
                   <th>Employee ID</th>
-                  <th>Training</th>
                   <th>Department</th>
-                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Nomination Date</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -189,22 +256,28 @@ function App() {
                     <td colSpan="7">No nominations found.</td>
                   </tr>
                 ) : (
-                  nominations.map((nomination) => (
+                  sortedNominations.map((nomination) => (
                     <tr key={nomination.id}>
-                      <td>{nomination.id}</td>
+                      <td>{nomination.training?.title || "-"}</td>
                       <td>{nomination.officer?.name || "-"}</td>
                       <td>{nomination.officer?.employeeId || "-"}</td>
-                      <td>{nomination.training?.title || "-"}</td>
                       <td>{nomination.department?.name || "-"}</td>
-                      <td>{nomination.nominationDate || nomination.date || "-"}</td>
                       <td>
-                        <button
-                          className="delete-button"
-                          type="button"
-                          onClick={() => handleDelete(nomination.id)}
-                        >
-                          Delete
-                        </button>
+                        <span className={`status ${nomination.status?.toLowerCase() || ""}`}>
+                          {nomination.status || "-"}
+                        </span>
+                      </td>
+                      <td>{(nomination.nominationDate || nomination.date || "-").replace("T", " ")}</td>
+                      <td>
+                        {nomination.status !== "CANCELLED" && (
+                          <button
+                            className="delete-button"
+                            type="button"
+                            onClick={() => handleCancel(nomination.id)}
+                          >
+                            Cancel
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
