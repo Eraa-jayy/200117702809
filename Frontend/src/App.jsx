@@ -35,6 +35,12 @@ function App() {
   const [officers, setOfficers] = useState([]);
   const [trainings, setTrainings] = useState([]);
   const [nominations, setNominations] = useState([]);
+  const [rules, setRules] = useState({});
+  const [selectedTraining, setSelectedTraining] = useState(null);
+  const [ruleForm, setRuleForm] = useState({ ruleType: "DEPARTMENT", ruleValue: "" });
+  const [editingRuleId, setEditingRuleId] = useState(null);
+  const [eligibility, setEligibility] = useState(null);
+  const [eligibilityLoading, setEligibilityLoading] = useState(false);
   const [form, setForm] = useState({
     departmentId: "",
     officerId: "",
@@ -67,10 +73,46 @@ function App() {
     }),
     [nominations]
   );
+  const recentParticipationByOfficer = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - 12);
+    const now = new Date();
+    const participation = {};
+
+    nominations
+      .filter((nomination) => nomination.status === "CONFIRMED" && nomination.nominationDate)
+      .filter((nomination) => {
+        const date = new Date(nomination.nominationDate);
+        return date >= cutoff && date <= now;
+      })
+      .sort((first, second) => (
+        new Date(second.nominationDate) - new Date(first.nominationDate)
+      ))
+      .forEach((nomination) => {
+        const officerId = nomination.officer?.id;
+        if (!officerId) {
+          return;
+        }
+        if (!participation[officerId]) {
+          participation[officerId] = [];
+        }
+        participation[officerId].push({
+          title: nomination.training?.title || "Training programme",
+          date: nomination.nominationDate,
+        });
+      });
+
+    return participation;
+  }, [nominations]);
 
   const loadNominations = async () => {
     const response = await api.get("/nominations");
     setNominations(getList(response));
+  };
+
+  const loadRules = async (trainingId) => {
+    const response = await api.get(`/eligibility-rules/training/${trainingId}`);
+    setRules((current) => ({ ...current, [trainingId]: getList(response) }));
   };
 
   useEffect(() => {
@@ -98,10 +140,45 @@ function App() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    trainings.forEach((training) => {
+      if (rules[training.id] === undefined) {
+        loadRules(training.id).catch((error) => {
+          setMessage({ type: "error", text: getErrorMessage(error) });
+        });
+      }
+    });
+  }, [trainings]);
+
   const handleChange = (event) => {
     setForm({ ...form, [event.target.name]: event.target.value });
     setMessage({ type: "", text: "" });
+    if (event.target.name === "officerId" || event.target.name === "trainingId") {
+      setEligibility(null);
+    }
   };
+
+  const checkEligibility = async () => {
+    if (!form.officerId || !form.trainingId) {
+      setEligibility(null);
+      return;
+    }
+    setEligibilityLoading(true);
+    try {
+      const response = await api.get("/nominations/eligibility", {
+        params: { officerId: form.officerId, trainingId: form.trainingId },
+      });
+      setEligibility(response.data);
+    } catch (error) {
+      setEligibility({ eligible: false, reason: getErrorMessage(error) });
+    } finally {
+      setEligibilityLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    checkEligibility();
+  }, [form.officerId, form.trainingId]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -195,9 +272,89 @@ function App() {
             </select>
           </label>
 
-          <button type="submit">Nominate Officer</button>
+          <button type="submit" disabled={eligibilityLoading || eligibility?.eligible === false}>
+            {eligibility?.eligible === false ? "Registration Not Allowed" : "Nominate Officer"}
+          </button>
         </form>
+        <button className="secondary-button" type="button" onClick={checkEligibility}>
+          Check Eligibility
+        </button>
+        {form.officerId && form.trainingId && (
+          <div className="eligibility-summary">
+            <h4>Eligibility Check</h4>
+            {(() => {
+              const selectedOfficer = officers.find(
+                (officer) => String(officer.id) === String(form.officerId)
+              );
+              const selectedTraining = trainings.find(
+                (training) => String(training.id) === String(form.trainingId)
+              );
+              return (
+                <p>
+                  Officer: {selectedOfficer?.name || "-"} | Training: {selectedTraining?.title || "-"} |
+                  Department: {selectedOfficer?.department?.name || "-"} | Grade: {selectedOfficer?.grade || "-"} |
+                  Years of service: {selectedOfficer?.yearsOfService ?? "-"}
+                </p>
+              );
+            })()}
+            <p>
+              {eligibilityLoading
+                ? "Checking eligibility..."
+                : eligibility?.eligible
+                  ? "✓ Eligible for this training."
+                  : `✗ Not eligible: ${eligibility?.reason || "Eligibility could not be confirmed."}`}
+            </p>
+            {eligibility?.lastParticipationDate && (
+              <p>
+                Last participation: {eligibility.lastParticipationDate.replace("T", " ")}.
+                Registration is not allowed until the 12-month restriction has passed.
+              </p>
+            )}
+          </div>
+        )}
         {message.text && <p className={`message ${message.type}`}>{message.text}</p>}
+      </section>
+
+      <section className="card">
+        <h3>Officer Eligibility Information</h3>
+        <div className="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Officer</th>
+                <th>Employee ID</th>
+                <th>Department</th>
+                <th>Grade</th>
+                <th>Years of Service</th>
+                <th>Programmes Participated in Last 12 Months</th>
+              </tr>
+            </thead>
+            <tbody>
+              {officers.map((officer) => (
+                <tr key={officer.id}>
+                  <td>{officer.name}</td>
+                  <td>{officer.employeeId}</td>
+                  <td>{officer.department?.name || "-"}</td>
+                  <td>{officer.grade || "-"}</td>
+                  <td>{officer.yearsOfService ?? "-"}</td>
+                  <td>
+                    {(recentParticipationByOfficer[officer.id] || []).length === 0 ? (
+                      "None"
+                    ) : (
+                      <ul className="participation-list">
+                        {recentParticipationByOfficer[officer.id].map((participation) => (
+                          <li key={`${participation.title}-${participation.date}`}>
+                            {participation.title} ({participation.date.replace("T", " ")})
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="card">
@@ -210,12 +367,14 @@ function App() {
                 <th>Capacity</th>
                 <th>Confirmed</th>
                 <th>Waiting</th>
+                <th>Eligibility</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {trainingSummaries.length === 0 ? (
                 <tr>
-                  <td colSpan="4">No training programmes found.</td>
+                  <td colSpan="6">No training programmes found.</td>
                 </tr>
               ) : (
                 trainingSummaries.map((training) => (
@@ -224,6 +383,25 @@ function App() {
                     <td>{training.maximumParticipants}</td>
                     <td>{training.confirmed}</td>
                     <td>{training.waiting}</td>
+                    <td>
+                      {rules[training.id] === undefined
+                        ? "Not loaded"
+                        : rules[training.id].length
+                          ? `${rules[training.id].length} rule${rules[training.id].length === 1 ? "" : "s"}`
+                          : "All officers eligible"}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={async () => {
+                          setSelectedTraining(training);
+                          await loadRules(training.id);
+                        }}
+                      >
+                        Manage Eligibility
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -231,6 +409,107 @@ function App() {
           </table>
         </div>
       </section>
+
+      {selectedTraining && (
+        <section className="card">
+          <div className="section-heading">
+            <h3>Eligibility Rules: {selectedTraining.title}</h3>
+            <button type="button" className="secondary-button" onClick={() => setSelectedTraining(null)}>
+              Close
+            </button>
+          </div>
+          <div className="rule-form">
+            <label>
+              Rule Type
+              <select
+                value={ruleForm.ruleType}
+                onChange={(event) => setRuleForm({ ...ruleForm, ruleType: event.target.value })}
+              >
+                <option value="DEPARTMENT">Department</option>
+                <option value="GRADE">Grade</option>
+                <option value="MIN_YEARS_SERVICE">Minimum Years of Service</option>
+              </select>
+            </label>
+            <label>
+              Value
+              {ruleForm.ruleType === "DEPARTMENT" ? (
+                <select
+                  value={ruleForm.ruleValue}
+                  onChange={(event) => setRuleForm({ ...ruleForm, ruleValue: event.target.value })}
+                >
+                  <option value="">Select department</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.name}>{department.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type={ruleForm.ruleType === "MIN_YEARS_SERVICE" ? "number" : "text"}
+                  min="0"
+                  value={ruleForm.ruleValue}
+                  onChange={(event) => setRuleForm({ ...ruleForm, ruleValue: event.target.value })}
+                  placeholder={ruleForm.ruleType === "MIN_YEARS_SERVICE" ? "5" : "Senior Officer"}
+                />
+              )}
+            </label>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const request = editingRuleId
+                    ? api.put(`/eligibility-rules/${editingRuleId}`, ruleForm)
+                    : api.post("/eligibility-rules", {
+                      ...ruleForm,
+                      trainingId: selectedTraining.id,
+                    });
+                  await request;
+                  await loadRules(selectedTraining.id);
+                  setRuleForm({ ...ruleForm, ruleValue: "" });
+                  setEditingRuleId(null);
+                  setMessage({ type: "success", text: editingRuleId ? "Eligibility rule updated." : "Eligibility rule added." });
+                } catch (error) {
+                  setMessage({ type: "error", text: getErrorMessage(error) });
+                }
+              }}
+            >
+              Add Rule
+            </button>
+          </div>
+          <ul className="rules-list">
+            {(rules[selectedTraining.id] || []).length === 0 ? (
+              <li>✓ All officers are eligible.</li>
+            ) : (rules[selectedTraining.id] || []).map((rule) => (
+              <li key={rule.id}>
+                <span>{rule.ruleType.replaceAll("_", " ")}: {rule.ruleValue}</span>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => {
+                    setEditingRuleId(rule.id);
+                    setRuleForm({ ruleType: rule.ruleType, ruleValue: rule.ruleValue });
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="delete-button"
+                  onClick={async () => {
+                    await api.delete(`/eligibility-rules/${rule.id}`);
+                    await loadRules(selectedTraining.id);
+                    if (editingRuleId === rule.id) {
+                      setEditingRuleId(null);
+                      setRuleForm({ ruleType: "DEPARTMENT", ruleValue: "" });
+                    }
+                  }}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="card">
         <h3>Current Nominations</h3>

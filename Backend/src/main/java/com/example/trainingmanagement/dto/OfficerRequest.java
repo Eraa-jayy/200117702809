@@ -26,4 +26,8 @@ public class OfficerRequest {
 
     @NotNull(message = "Department id is required")
     private Long departmentId;
+
+    private String grade;
+
+    private Integer yearsOfService;
 }

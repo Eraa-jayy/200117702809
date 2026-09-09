@@ -27,6 +27,8 @@ public class OfficerService {
         officer.setName(request.getName());
         officer.setEmail(request.getEmail());
         officer.setDepartment(department);
+        officer.setGrade(request.getGrade());
+        officer.setYearsOfService(request.getYearsOfService());
         return officerRepository.save(officer);
     }
 
@@ -46,6 +48,8 @@ public class OfficerService {
         officer.setName(request.getName());
         officer.setEmail(request.getEmail());
         officer.setDepartment(department);
+        officer.setGrade(request.getGrade());
+        officer.setYearsOfService(request.getYearsOfService());
         return officerRepository.save(officer);
     }
 

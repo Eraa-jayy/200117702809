@@ -23,15 +23,18 @@ public class NominationService {
     private final OfficerService officerService;
     private final TrainingService trainingService;
     private final DepartmentService departmentService;
+    private final EligibilityService eligibilityService;
 
     public NominationService(NominationRepository nominationRepository,
                              OfficerService officerService,
                              TrainingService trainingService,
-                             DepartmentService departmentService) {
+                             DepartmentService departmentService,
+                             EligibilityService eligibilityService) {
         this.nominationRepository = nominationRepository;
         this.officerService = officerService;
         this.trainingService = trainingService;
         this.departmentService = departmentService;
+        this.eligibilityService = eligibilityService;
     }
 
     /**
@@ -42,6 +45,11 @@ public class NominationService {
         Officer officer = officerService.getOfficerById(request.getOfficerId());
         Training training = trainingService.getTrainingById(request.getTrainingId());
         Department department = departmentService.getDepartmentById(request.getDepartmentId());
+
+        var eligibility = eligibilityService.checkEligibility(officer, training);
+        if (!eligibility.eligible()) {
+            throw new IllegalArgumentException(eligibility.reason());
+        }
 
         if (nominationRepository.existsByOfficerIdAndTrainingIdAndStatusIn(
                 officer.getId(), training.getId(),
@@ -112,9 +120,15 @@ public class NominationService {
             return false;
         }
 
-        Nomination nextWaitingNomination = waitingNominations.get(0);
-        nextWaitingNomination.setStatus(NominationStatus.CONFIRMED);
-        nominationRepository.save(nextWaitingNomination);
-        return true;
+        for (Nomination waitingNomination : waitingNominations) {
+            var eligibility = eligibilityService.checkEligibility(
+                    waitingNomination.getOfficer(), waitingNomination.getTraining());
+            if (eligibility.eligible()) {
+                waitingNomination.setStatus(NominationStatus.CONFIRMED);
+                nominationRepository.save(waitingNomination);
+                return true;
+            }
+        }
+        return false;
     }
 }
