@@ -1,0 +1,138 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f3f5f7;
+  color: #20252b;
+  font-family: Arial, sans-serif;
+}
+
+.container {
+  width: min(1100px, calc(100% - 32px));
+  margin: 40px auto;
+}
+
+header {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+h2 {
+  margin: 0;
+  color: #4b5968;
+  font-size: 20px;
+  font-weight: normal;
+}
+
+.card {
+  margin-bottom: 24px;
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #d8dde3;
+  border-radius: 4px;
+}
+
+h3 {
+  margin: 0 0 18px;
+  font-size: 20px;
+}
+
+form {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) auto;
+  gap: 16px;
+  align-items: end;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-weight: bold;
+}
+
+select {
+  min-height: 38px;
+  padding: 8px;
+  border: 1px solid #aeb7c2;
+  border-radius: 3px;
+  background: #fff;
+  font-size: 14px;
+}
+
+button {
+  min-height: 38px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 3px;
+  background: #245b8f;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button:hover {
+  background: #1b476f;
+}
+
+.message {
+  margin: 18px 0 0;
+  padding: 10px 12px;
+  border-radius: 3px;
+}
+
+.success {
+  background: #e7f5ea;
+  color: #216b32;
+}
+
+.error {
+  background: #fdebea;
+  color: #a12620;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th,
+td {
+  padding: 11px 10px;
+  border: 1px solid #d8dde3;
+  text-align: left;
+}
+
+th {
+  background: #eef1f4;
+}
+
+.delete-button {
+  background: #a83232;
+}
+
+.delete-button:hover {
+  background: #852727;
+}
+
+@media (max-width: 800px) {
+  form {
+    grid-template-columns: 1fr;
+  }
+
+  form button {
+    width: 100%;
+  }
+}

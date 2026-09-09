@@ -1,0 +1,7 @@
+Backend/.m2/
+Backend/target/
+Frontend/node_modules/
+Frontend/dist/
+target/
+.idea/
+.git-remote-inspect/
